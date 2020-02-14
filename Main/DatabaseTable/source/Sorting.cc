@@ -31,6 +31,21 @@ public:
     }
 };
 
+void appendToPage(MyDB_BufferManagerPtr parent, MyDB_RecordPtr appendMe, vector <MyDB_PageReaderWriter> &curList) {
+    if (curList.empty()) {
+        MyDB_PageReaderWriter newPage(*parent);
+        curList.push_back(newPage);
+    }
+
+    MyDB_PageReaderWriter &curPage = curList.back();
+    if (!curPage.append(appendMe)) {
+        MyDB_PageReaderWriter nextPage(*parent);
+        nextPage.append(appendMe);
+        curList.push_back(nextPage);
+    }
+}
+
+
 void mergeIntoFile (MyDB_TableReaderWriter &sortIntoMe, vector <MyDB_RecordIteratorAltPtr> &mergeUs, function <bool ()> comparator, MyDB_RecordPtr lhs, MyDB_RecordPtr rhs) {
     comparePQ comp(comparator, lhs, rhs);
     priority_queue<MyDB_RecordIteratorAltPtr, vector<MyDB_RecordIteratorAltPtr>, comparePQ> pq (comp, mergeUs);
@@ -52,7 +67,39 @@ void mergeIntoFile (MyDB_TableReaderWriter &sortIntoMe, vector <MyDB_RecordItera
 }
 
 vector <MyDB_PageReaderWriter> mergeIntoList (MyDB_BufferManagerPtr parent, MyDB_RecordIteratorAltPtr leftIter, MyDB_RecordIteratorAltPtr rightIter, function <bool ()> comparator,
-	MyDB_RecordPtr lhs, MyDB_RecordPtr rhs) {return vector <MyDB_PageReaderWriter> (); }
+	MyDB_RecordPtr lhs, MyDB_RecordPtr rhs) {
+    vector <MyDB_PageReaderWriter> sortedPageList;
+
+    // check  if one run is empty
+    bool leftIsEnd = !leftIter->advance();
+    bool rightIsEnd = !rightIter->advance();
+
+    while (!leftIsEnd && !rightIsEnd) {
+        leftIter->getCurrent(lhs);
+        rightIter->getCurrent(rhs);
+        if (comparator()) {
+            appendToPage(parent, lhs, sortedPageList);
+            leftIsEnd = leftIter->advance();
+        }
+        else {
+            appendToPage(parent, rhs, sortedPageList);
+            rightIsEnd = rightIter->advance();
+        }
+    }
+    while (!leftIsEnd) {
+        leftIter->getCurrent(lhs);
+        appendToPage(parent, lhs, sortedPageList);
+        leftIsEnd = leftIter->advance();
+    }
+
+    while (!rightIsEnd) {
+        rightIter->getCurrent(rhs);
+        appendToPage(parent, rhs, sortedPageList);
+        rightIsEnd = rightIter->advance();
+    }
+
+    return sortedPageList;
+}
 	
 void sort (int runSize, MyDB_TableReaderWriter &sortMe, MyDB_TableReaderWriter &sortIntoMe, function <bool ()> comparator, MyDB_RecordPtr lhs, MyDB_RecordPtr rhs) {
     MyDB_BufferManagerPtr BufferPtr = sortMe.getBufferMgr();
