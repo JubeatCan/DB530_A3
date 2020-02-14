@@ -22,7 +22,7 @@ public:
         rc = new RecordComparator(comparator, lhs, rhs);
     }
 
-    bool operator() (const MyDB_RecordIteratorAltPtr &l, MyDB_RecordIteratorAltPtr &r) {
+    bool operator() (MyDB_RecordIteratorAltPtr l, MyDB_RecordIteratorAltPtr r) {
         return !rc->operator()(l->getCurrentPointer(), r->getCurrentPointer());
     }
 
@@ -47,8 +47,26 @@ void appendToPage(MyDB_BufferManagerPtr parent, MyDB_RecordPtr appendMe, vector 
 
 
 void mergeIntoFile (MyDB_TableReaderWriter &sortIntoMe, vector <MyDB_RecordIteratorAltPtr> &mergeUs, function <bool ()> comparator, MyDB_RecordPtr lhs, MyDB_RecordPtr rhs) {
-    comparePQ comp(comparator, lhs, rhs);
-    priority_queue<MyDB_RecordIteratorAltPtr, vector<MyDB_RecordIteratorAltPtr>, comparePQ> pq (comp, mergeUs);
+//    comparePQ comp(comparator, lhs, rhs);
+//    priority_queue<MyDB_RecordIteratorAltPtr, vector<MyDB_RecordIteratorAltPtr>, comparePQ> pq (comp, mergeUs);
+
+    RecordComparator recordComp (comparator, lhs, rhs);
+
+    // create a comparator for record iterator
+    // 这里的比较函数时大于，用于定义min heap
+    auto recIterComp = [&recordComp]
+            (MyDB_RecordIteratorAltPtr left,
+             MyDB_RecordIteratorAltPtr right) {
+
+        return !recordComp(left->getCurrentPointer(), right->getCurrentPointer());
+    };
+
+    // create a priority queue for holding the records from mergeUs
+    // C++ default: max heap
+    priority_queue <MyDB_RecordIteratorAltPtr,
+            vector <MyDB_RecordIteratorAltPtr>,
+            decltype(recIterComp)>
+            pq (recIterComp, mergeUs);
 
     MyDB_RecordIteratorAltPtr tempPtr;
     while (!pq.empty()) {
@@ -71,8 +89,8 @@ vector <MyDB_PageReaderWriter> mergeIntoList (MyDB_BufferManagerPtr parent, MyDB
     vector <MyDB_PageReaderWriter> sortedPageList;
 
     // check  if one run is empty
-    bool leftIsEnd = !leftIter->advance();
-    bool rightIsEnd = !rightIter->advance();
+    bool leftIsEnd = false;
+    bool rightIsEnd = false;
 
     while (!leftIsEnd && !rightIsEnd) {
         leftIter->getCurrent(lhs);
