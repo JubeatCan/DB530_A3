@@ -7,12 +7,47 @@
 #include "MyDB_TableRecIteratorAlt.h"
 #include "MyDB_TableReaderWriter.h"
 #include "Sorting.h"
+#include "RecordComparator.h"
 #include <memory>
 #include <vector>
+#include <algorithm>
 
 using namespace std;
 
+class comparePQ {
+private:
+    RecordComparator* rc;
+public:
+    comparePQ(function <bool ()> comparator, MyDB_RecordPtr lhs, MyDB_RecordPtr rhs) {
+        rc = new RecordComparator(comparator, lhs, rhs);
+    }
+
+    bool operator() (const MyDB_RecordIteratorAltPtr &l, MyDB_RecordIteratorAltPtr &r) {
+        return !rc->operator()(l->getCurrentPointer(), r->getCurrentPointer());
+    }
+
+    ~comparePQ() {
+        delete(rc);
+    }
+};
+
 void mergeIntoFile (MyDB_TableReaderWriter &sortIntoMe, vector <MyDB_RecordIteratorAltPtr> &mergeUs, function <bool ()> comparator, MyDB_RecordPtr lhs, MyDB_RecordPtr rhs) {
+    comparePQ comp(comparator, lhs, rhs);
+    priority_queue<MyDB_RecordIteratorAltPtr, vector<MyDB_RecordIteratorAltPtr>, comparePQ> pq (comp, mergeUs);
+
+    MyDB_RecordIteratorAltPtr tempPtr;
+    while (!pq.empty()) {
+        tempPtr = pq.top();
+        pq.pop();
+
+        tempPtr -> getCurrent(lhs);
+        sortIntoMe.append(lhs);
+
+        // See if this is the end of page
+        if (tempPtr->advance()) {
+            pq.push(tempPtr);
+        }
+    }
 
 }
 
