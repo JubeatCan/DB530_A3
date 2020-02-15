@@ -26,7 +26,7 @@ public:
         return !rc->operator()(l->getCurrentPointer(), r->getCurrentPointer());
     }
 
-    ~comparePQ() {
+    void release() {
         delete(rc);
     }
 };
@@ -47,26 +47,8 @@ void appendToPage(MyDB_BufferManagerPtr parent, MyDB_RecordPtr appendMe, vector 
 
 
 void mergeIntoFile (MyDB_TableReaderWriter &sortIntoMe, vector <MyDB_RecordIteratorAltPtr> &mergeUs, function <bool ()> comparator, MyDB_RecordPtr lhs, MyDB_RecordPtr rhs) {
-//    comparePQ comp(comparator, lhs, rhs);
-//    priority_queue<MyDB_RecordIteratorAltPtr, vector<MyDB_RecordIteratorAltPtr>, comparePQ> pq (comp, mergeUs);
-
-    RecordComparator recordComp (comparator, lhs, rhs);
-
-    // create a comparator for record iterator
-    // 这里的比较函数时大于，用于定义min heap
-    auto recIterComp = [&recordComp]
-            (MyDB_RecordIteratorAltPtr left,
-             MyDB_RecordIteratorAltPtr right) {
-
-        return !recordComp(left->getCurrentPointer(), right->getCurrentPointer());
-    };
-
-    // create a priority queue for holding the records from mergeUs
-    // C++ default: max heap
-    priority_queue <MyDB_RecordIteratorAltPtr,
-            vector <MyDB_RecordIteratorAltPtr>,
-            decltype(recIterComp)>
-            pq (recIterComp, mergeUs);
+    comparePQ comp(comparator, lhs, rhs);
+    priority_queue<MyDB_RecordIteratorAltPtr, vector<MyDB_RecordIteratorAltPtr>, comparePQ> pq (comp, mergeUs);
 
     MyDB_RecordIteratorAltPtr tempPtr;
     while (!pq.empty()) {
@@ -76,12 +58,12 @@ void mergeIntoFile (MyDB_TableReaderWriter &sortIntoMe, vector <MyDB_RecordItera
         tempPtr -> getCurrent(lhs);
         sortIntoMe.append(lhs);
 
-        // See if this is the end of page
         if (tempPtr->advance()) {
             pq.push(tempPtr);
         }
     }
 
+    comp.release();
 }
 
 vector <MyDB_PageReaderWriter> mergeIntoList (MyDB_BufferManagerPtr parent, MyDB_RecordIteratorAltPtr leftIter, MyDB_RecordIteratorAltPtr rightIter, function <bool ()> comparator,
@@ -97,23 +79,23 @@ vector <MyDB_PageReaderWriter> mergeIntoList (MyDB_BufferManagerPtr parent, MyDB
         rightIter->getCurrent(rhs);
         if (comparator()) {
             appendToPage(parent, lhs, sortedPageList);
-            leftIsEnd = leftIter->advance();
+            leftIsEnd = !leftIter->advance();
         }
         else {
             appendToPage(parent, rhs, sortedPageList);
-            rightIsEnd = rightIter->advance();
+            rightIsEnd = !rightIter->advance();
         }
     }
     while (!leftIsEnd) {
         leftIter->getCurrent(lhs);
         appendToPage(parent, lhs, sortedPageList);
-        leftIsEnd = leftIter->advance();
+        leftIsEnd = !leftIter->advance();
     }
 
     while (!rightIsEnd) {
         rightIter->getCurrent(rhs);
         appendToPage(parent, rhs, sortedPageList);
-        rightIsEnd = rightIter->advance();
+        rightIsEnd = !rightIter->advance();
     }
 
     return sortedPageList;
